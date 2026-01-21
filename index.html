@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Pose Visualizer</title>
+    
+    <!-- Bulma CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Left Panel: Code Editor & Settings -->
+        <div class="left-panel">
+            <div class="panel-header">
+                <h1 class="title is-4">
+                    <i class="fas fa-camera-retro"></i>
+                    Camera Pose Visualizer
+                </h1>
+            </div>
+            
+            <!-- Pose Input Section -->
+            <div class="box code-box">
+                <h2 class="subtitle is-6">
+                    <i class="fas fa-code"></i>
+                    Pose Sequence Input
+                </h2>
+                <p class="help mb-3">Paste Python-like lists of shape [T, 4, 4]. Separate multiple trajectories with blank lines. Use <code># Name</code> to label each.</p>
+                <div class="field">
+                    <div class="control">
+                        <textarea id="pose-input" class="textarea code-input" rows="16" placeholder="[
+  [[1, 0, 0, 0],
+   [0, 1, 0, 0],
+   [0, 0, 1, 0],
+   [0, 0, 0, 1]],
+  [[1, 0, 0, 0.5],
+   [0, 1, 0, 0],
+   [0, 0, 1, 0],
+   [0, 0, 0, 1]],
+  ...
+]"></textarea>
+                    </div>
+                </div>
+                <div class="field">
+                    <button id="visualize-btn" class="button is-primary is-fullwidth">
+                        <span class="icon"><i class="fas fa-play"></i></span>
+                        <span>Visualize</span>
+                    </button>
+                </div>
+                <div id="parse-status" class="notification is-hidden"></div>
+            </div>
+            
+            <!-- Pose Settings Section -->
+            <div class="box settings-box">
+                <h2 class="subtitle is-6">
+                    <i class="fas fa-cog"></i>
+                    Pose Settings
+                </h2>
+                
+                <div class="field">
+                    <label class="label is-small">Pose Format</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select id="pose-format">
+                                <option value="c2w">Camera-to-World (Pose)</option>
+                                <option value="w2c">World-to-Camera (Extrinsic)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="field">
+                    <label class="label is-small">Coordinate Convention</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select id="coord-convention">
+                                <option value="opengl">OpenGL (Y up, -Z forward)</option>
+                                <option value="opencv">OpenCV (Y down, Z forward)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Info Section -->
+            <div class="box info-box">
+                <h2 class="subtitle is-6">
+                    <i class="fas fa-info-circle"></i>
+                    Info
+                </h2>
+                <div id="pose-info">
+                    <p class="has-text-grey-light">No poses loaded</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Panel: Three.js Viewport -->
+        <div class="right-panel">
+            <!-- 3D Settings Panel (Top Right) - Foldable -->
+            <div class="viewport-settings box">
+                <div class="settings-header" id="settings-toggle">
+                    <h3 class="subtitle is-6 mb-0">
+                        <i class="fas fa-sliders-h"></i>
+                        Display Settings
+                    </h3>
+                    <span class="fold-icon">
+                        <i class="fas fa-chevron-up" id="fold-icon"></i>
+                    </span>
+                </div>
+                
+                <div class="settings-content" id="settings-content">
+                    <div class="field is-horizontal">
+                        <div class="field-label is-small">
+                            <label class="label">Every N frames</label>
+                        </div>
+                        <div class="field-body">
+                            <div class="field has-addons">
+                                <div class="control is-expanded">
+                                    <input id="frame-step" type="number" class="input is-small" value="1" min="1" max="1000">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="field is-horizontal">
+                        <div class="field-label is-small">
+                            <label class="label">Frustum Size</label>
+                        </div>
+                        <div class="field-body">
+                            <div class="field">
+                                <div class="control">
+                                    <input id="frustum-size" type="number" class="input is-small" value="0.2" min="0.001" max="100" step="0.01">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="field is-horizontal">
+                        <div class="field-label is-small">
+                            <label class="label">FOV</label>
+                        </div>
+                        <div class="field-body">
+                            <div class="field">
+                                <div class="control">
+                                    <input id="camera-fov" type="number" class="input is-small" value="60" min="10" max="120">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="field">
+                        <label class="checkbox is-small">
+                            <input id="white-background" type="checkbox" checked>
+                            White Background
+                        </label>
+                    </div>
+                    
+                    <div class="field">
+                        <label class="checkbox is-small">
+                            <input id="show-axes" type="checkbox" checked>
+                            Show Camera Axes
+                        </label>
+                    </div>
+                    
+                    <div class="field">
+                        <label class="checkbox is-small">
+                            <input id="show-grid" type="checkbox" checked>
+                            Show Grid
+                        </label>
+                    </div>
+                    
+                    <div class="field">
+                        <label class="checkbox is-small">
+                            <input id="show-world-axes" type="checkbox" checked>
+                            Show World Axes
+                        </label>
+                    </div>
+                    
+                    <div class="field">
+                        <label class="checkbox is-small">
+                            <input id="color-by-time" type="checkbox" checked>
+                            Color by Time
+                        </label>
+                    </div>
+                    
+                    <!-- Trajectory visibility list -->
+                    <div class="trajectory-section mt-3">
+                        <label class="label is-small mb-1">Trajectories</label>
+                        <div id="trajectory-list" class="trajectory-list">
+                            <p class="has-text-grey is-size-7">No trajectories</p>
+                        </div>
+                    </div>
+                    
+                    <div class="field mt-3">
+                        <button id="reset-view-btn" class="button is-small is-outlined is-fullwidth">
+                            <span class="icon"><i class="fas fa-sync"></i></span>
+                            <span>Reset View</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Three.js Canvas Container -->
+            <div id="viewport-container">
+                <canvas id="three-canvas"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Three.js and extensions -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    
+    <!-- Application modules -->
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
+
