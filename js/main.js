@@ -270,16 +270,41 @@ class CameraPoseVisualizer {
         });
     }
 
+    /**
+     * Format poses array with 4 numbers per line (one row per line)
+     * This matches the placeholder example format
+     */
+    formatPosesCompact(poses) {
+        const lines = ['['];
+        poses.forEach((pose, poseIdx) => {
+            lines.push('  [');
+            pose.forEach((row, rowIdx) => {
+                const rowStr = row.map(n => {
+                    // Format numbers: 2 decimal places, trim trailing zeros
+                    if (Number.isInteger(n)) return n.toString();
+                    const str = n.toFixed(2).replace(/\.?0+$/, '');
+                    return str === '-0' ? '0' : str;
+                }).join(', ');
+                const comma = rowIdx < 3 ? ',' : '';
+                lines.push(`   [${rowStr}]${comma}`);
+            });
+            const poseComma = poseIdx < poses.length - 1 ? ',' : '';
+            lines.push(`  ]${poseComma}`);
+        });
+        lines.push(']');
+        return lines.join('\n');
+    }
+
     loadSampleData() {
         // Generate two sample trajectories for demonstration
         const circlePoses = PoseParser.generateSample(24, 'circle');
         const helixPoses = PoseParser.generateSample(30, 'helix');
         
-        // Format as two separate blocks with names
+        // Format as two separate blocks with names (4 numbers per line)
         const sampleText = '# Circle Path\n' +
-                          JSON.stringify(circlePoses, null, 2) + 
+                          this.formatPosesCompact(circlePoses) + 
                           '\n\n# Helix Path\n' + 
-                          JSON.stringify(helixPoses, null, 2);
+                          this.formatPosesCompact(helixPoses);
         
         this.ui.poseInput.value = sampleText;
         

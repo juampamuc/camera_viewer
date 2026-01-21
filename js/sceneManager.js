@@ -29,16 +29,16 @@ export class SceneManager {
         // Current convention (needed for axis visualization)
         this.currentConvention = 'opengl';
         
-        // Color palettes for different trajectories (when colorByTime is enabled)
-        this.trajectoryColors = [
-            { start: 0.55, end: 0.45 },  // Cyan to teal
-            { start: 0.0, end: 0.08 },   // Red to orange
-            { start: 0.75, end: 0.85 },  // Purple to pink
-            { start: 0.25, end: 0.35 },  // Green to yellow-green
-            { start: 0.58, end: 0.68 },  // Blue to light blue
-            { start: 0.9, end: 0.98 },   // Magenta to pink
-            { start: 0.12, end: 0.18 },  // Orange to yellow
-            { start: 0.42, end: 0.48 },  // Teal to cyan
+        // Distinct hues for different trajectories (colorByTime uses dark-to-bright of same hue)
+        this.trajectoryHues = [
+            0.0,    // Red
+            0.58,   // Blue
+            0.33,   // Green
+            0.08,   // Orange
+            0.75,   // Purple
+            0.50,   // Cyan
+            0.92,   // Pink/Magenta
+            0.17,   // Yellow
         ];
         
         // Settings
@@ -191,18 +191,18 @@ export class SceneManager {
         
         // Determine frustum color
         let frustumColor;
+        const hue = this.trajectoryHues[trajectoryIndex % this.trajectoryHues.length];
+        frustumColor = new THREE.Color();
+        
         if (this.settings.colorByTime && totalCount > 1) {
-            // Use trajectory-specific color palette
-            const colorPalette = this.trajectoryColors[trajectoryIndex % this.trajectoryColors.length];
+            // Same hue, but dark-to-bright transition for time visualization
             const t = totalCount > 1 ? index / (totalCount - 1) : 0;
-            frustumColor = new THREE.Color();
-            const hue = colorPalette.start + t * (colorPalette.end - colorPalette.start);
-            frustumColor.setHSL(hue, 0.8, 0.55);
+            // Lightness goes from 0.25 (dark) to 0.65 (bright)
+            const lightness = 0.25 + t * 0.4;
+            frustumColor.setHSL(hue, 0.85, lightness);
         } else {
-            // Use fixed colors per trajectory when not coloring by time
-            const hue = this.trajectoryColors[trajectoryIndex % this.trajectoryColors.length].start;
-            frustumColor = new THREE.Color();
-            frustumColor.setHSL(hue, 0.7, 0.5);
+            // Use fixed mid-brightness color per trajectory
+            frustumColor.setHSL(hue, 0.75, 0.5);
         }
         
         // Line pairs for frustum edges
@@ -593,9 +593,9 @@ export class SceneManager {
      * Get the color for a trajectory (for UI display)
      */
     getTrajectoryColor(trajectoryIndex) {
-        const colorPalette = this.trajectoryColors[trajectoryIndex % this.trajectoryColors.length];
+        const hue = this.trajectoryHues[trajectoryIndex % this.trajectoryHues.length];
         const color = new THREE.Color();
-        color.setHSL(colorPalette.start, 0.7, 0.5);
+        color.setHSL(hue, 0.75, 0.5);
         return '#' + color.getHexString();
     }
 }
