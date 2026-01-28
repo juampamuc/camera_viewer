@@ -22,6 +22,7 @@ class CameraPoseVisualizer {
             frustumSize: document.getElementById('frustum-size'),
             cameraFov: document.getElementById('camera-fov'),
             whiteBackground: document.getElementById('white-background'),
+            showFrustum: document.getElementById('show-frustum'),
             showAxes: document.getElementById('show-axes'),
             showGrid: document.getElementById('show-grid'),
             showWorldAxes: document.getElementById('show-world-axes'),
@@ -84,6 +85,10 @@ class CameraPoseVisualizer {
         
         this.ui.whiteBackground.addEventListener('change', (e) => {
             this.sceneManager.updateSetting('whiteBackground', e.target.checked);
+        });
+
+        this.ui.showFrustum.addEventListener('change', (e) => {
+            this.sceneManager.updateSetting('showFrustum', e.target.checked);
         });
         
         this.ui.showAxes.addEventListener('change', (e) => {

@@ -163,6 +163,13 @@
                     
                     <div class="field">
                         <label class="checkbox is-small">
+                            <input id="show-frustum" type="checkbox" checked>
+                            Show Frustum
+                        </label>
+                    </div>
+
+                    <div class="field">
+                        <label class="checkbox is-small">
                             <input id="show-axes" type="checkbox" checked>
                             Show Camera Axes
                         </label>
@@ -186,6 +193,10 @@
                         <label class="checkbox is-small">
                             <input id="color-by-time" type="checkbox" checked>
                             Color by Time
+                            <span class="icon is-small has-text-grey-light ml-1 tooltip" style="cursor: help;">
+                                <i class="fas fa-question-circle"></i>
+                                <span class="tooltiptext">Darker colors = start<br>Lighter colors = end</span>
+                            </span>
                         </label>
                     </div>
                     
@@ -202,6 +213,7 @@
                             <span class="icon"><i class="fas fa-sync"></i></span>
                             <span>Reset View</span>
                         </button>
+                        <p class="help has-text-centered mt-1">Double click pose to focus</p>
                     </div>
                 </div>
             </div>

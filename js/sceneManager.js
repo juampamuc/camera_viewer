@@ -17,6 +17,8 @@ export class SceneManager {
         this.camera = null;
         this.renderer = null;
         this.controls = null;
+        this.raycaster = new THREE.Raycaster();
+        this.mouse = new THREE.Vector2();
         
         // Scene objects
         this.frustumGroups = [];  // One group per trajectory
@@ -49,6 +51,7 @@ export class SceneManager {
             aspectRatio: 1.33,
             whiteBackground: true,  // Default to white background
             showAxes: true,
+            showFrustum: true,
             showGrid: true,
             showWorldAxes: true,
             colorByTime: true
@@ -94,6 +97,9 @@ export class SceneManager {
         
         // Handle resize
         window.addEventListener('resize', () => this.onResize());
+
+        // Handle double click for focusing
+        this.canvas.addEventListener('dblclick', (e) => this.onDoubleClick(e));
         
         // Start animation loop
         this.animate();
@@ -197,37 +203,47 @@ export class SceneManager {
         if (this.settings.colorByTime && totalCount > 1) {
             // Same hue, but dark-to-bright transition for time visualization
             const t = totalCount > 1 ? index / (totalCount - 1) : 0;
-            // Lightness goes from 0.25 (dark) to 0.65 (bright)
-            const lightness = 0.25 + t * 0.4;
-            frustumColor.setHSL(hue, 0.85, lightness);
+            
+            let lightness;
+            if (this.settings.whiteBackground) {
+                // Light background: avoid very bright colors (0.1 to 0.75)
+                lightness = 0.1 + t * 0.65;
+            } else {
+                // Dark background: avoid very dark colors (0.25 to 0.9)
+                lightness = 0.25 + t * 0.65;
+            }
+            
+            frustumColor.setHSL(hue, 1.0, lightness);
         } else {
             // Use fixed mid-brightness color per trajectory
             frustumColor.setHSL(hue, 0.75, 0.5);
         }
         
         // Line pairs for frustum edges
-        const linePairs = [
-            [1, 2], [2, 3], [3, 4], [4, 1],  // Near plane
-            [0, 1], [0, 2], [0, 3], [0, 4]   // Edges from camera to near plane
-        ];
-        
-        linePairs.forEach(pair => {
-            const positions = [
-                vertices[pair[0]].x, vertices[pair[0]].y, vertices[pair[0]].z,
-                vertices[pair[1]].x, vertices[pair[1]].y, vertices[pair[1]].z
+        if (this.settings.showFrustum) {
+            const linePairs = [
+                [1, 2], [2, 3], [3, 4], [4, 1],  // Near plane
+                [0, 1], [0, 2], [0, 3], [0, 4]   // Edges from camera to near plane
             ];
             
-            const lineGeometry = new LineGeometry();
-            lineGeometry.setPositions(positions);
-            
-            const lineMaterial = new LineMaterial({
-                color: frustumColor,
-                linewidth: 2,
-                resolution: resolution
+            linePairs.forEach(pair => {
+                const positions = [
+                    vertices[pair[0]].x, vertices[pair[0]].y, vertices[pair[0]].z,
+                    vertices[pair[1]].x, vertices[pair[1]].y, vertices[pair[1]].z
+                ];
+                
+                const lineGeometry = new LineGeometry();
+                lineGeometry.setPositions(positions);
+                
+                const lineMaterial = new LineMaterial({
+                    color: frustumColor,
+                    linewidth: 2,
+                    resolution: resolution
+                });
+                
+                group.add(new Line2(lineGeometry, lineMaterial));
             });
-            
-            group.add(new Line2(lineGeometry, lineMaterial));
-        });
+        }
         
         // Add local camera axes if enabled
         if (this.settings.showAxes) {
@@ -455,6 +471,12 @@ export class SceneManager {
         const bbox = PoseConverter.computeBoundingBox(allPoses);
         const sceneSize = PoseConverter.computeSceneSize(allPoses);
         
+        // Adjust camera near/far planes based on scene size
+        // This helps with Z-fighting on large scales and clipping on small scales
+        this.camera.near = Math.max(0.001, sceneSize / 10000);
+        this.camera.far = Math.max(100, sceneSize * 100);
+        this.camera.updateProjectionMatrix();
+
         // Position camera to view the entire scene
         const distance = Math.max(sceneSize * 1.5, 2);
         const targetPos = new THREE.Vector3(bbox.center.x, bbox.center.y, bbox.center.z);
@@ -472,13 +494,42 @@ export class SceneManager {
         this.camera.up.set(0, 1, 0);  // Reset up vector to Y-up
         this.camera.lookAt(targetPos);
         
-        // Update TrackballControls internal state by storing current as target0/position0
-        // This makes the current view the new "home" position for reset
-        this.controls.target0.copy(targetPos);
-        this.controls.position0.copy(cameraPos);
-        this.controls.up0.set(0, 1, 0);
-        
         this.controls.update();
+    }
+
+    /**
+     * Handle double click to focus on a point
+     */
+    onDoubleClick(event) {
+        // Calculate mouse position in normalized device coordinates
+        const rect = this.canvas.getBoundingClientRect();
+        this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+
+        // Intersect with all trajectory groups
+        const intersects = [];
+        this.trajectories.forEach(traj => {
+            if (traj.visible && traj.group) {
+                // We need to intersect recursively because frustums are groups of lines
+                const trajIntersects = this.raycaster.intersectObject(traj.group, true);
+                intersects.push(...trajIntersects);
+            }
+        });
+
+        if (intersects.length > 0) {
+            // Sort by distance
+            intersects.sort((a, b) => a.distance - b.distance);
+            
+            // Focus on the first hit point
+            const point = intersects[0].point;
+            
+            // Smoothly move target to the point
+            // For now, just snap to it
+            this.controls.target.copy(point);
+            this.controls.update();
+        }
     }
 
     /**
@@ -515,6 +566,7 @@ export class SceneManager {
                 break;
                 
             case 'showAxes':
+            case 'showFrustum':
             case 'colorByTime':
             case 'frameStep':
             case 'frustumSize':
@@ -535,6 +587,9 @@ export class SceneManager {
         this.camera.updateProjectionMatrix();
         
         this.renderer.setSize(width, height);
+        
+        // TrackballControls needs to know about resize
+        this.controls.handleResize();
         
         // Update line material resolutions
         const resolution = new THREE.Vector2(width, height);
