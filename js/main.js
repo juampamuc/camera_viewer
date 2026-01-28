@@ -14,6 +14,7 @@ class CameraPoseVisualizer {
             visualizeBtn: document.getElementById('visualize-btn'),
             parseStatus: document.getElementById('parse-status'),
             poseFormat: document.getElementById('pose-format'),
+            inputFormat: document.getElementById('input-format'),
             coordConvention: document.getElementById('coord-convention'),
             poseInfo: document.getElementById('pose-info'),
             
@@ -68,6 +69,35 @@ class CameraPoseVisualizer {
         // Pose settings changes
         this.ui.poseFormat.addEventListener('change', () => this.onPoseSettingsChange());
         this.ui.coordConvention.addEventListener('change', () => this.onPoseSettingsChange());
+        
+        // Input format change - update placeholder
+        this.ui.inputFormat.addEventListener('change', () => {
+            const format = this.ui.inputFormat.value;
+            if (format === 'matrix') {
+                this.ui.poseInput.placeholder = `[
+  [[1, 0, 0, 0],
+   [0, 1, 0, 0],
+   [0, 0, 1, 0],
+   [0, 0, 0, 1]],
+  ...
+]`;
+            } else if (format === 'xyz_quat_wxyz') {
+                this.ui.poseInput.placeholder = `[
+  [x, y, z, qw, qx, qy, qz],
+  ...
+]`;
+            } else if (format === 'xyz_quat_xyzw') {
+                this.ui.poseInput.placeholder = `[
+  [x, y, z, qx, qy, qz, qw],
+  ...
+]`;
+            } else if (format === 'quat_wxyz_xyz') {
+                this.ui.poseInput.placeholder = `[
+  [qw, qx, qy, qz, x, y, z],
+  ...
+]`;
+            }
+        });
         
         // Display settings
         this.ui.frameStep.addEventListener('input', (e) => {
@@ -128,6 +158,7 @@ class CameraPoseVisualizer {
 
     visualize() {
         const input = this.ui.poseInput.value.trim();
+        const inputFormat = this.ui.inputFormat.value;
         
         if (!input) {
             this.showStatus('Please enter pose data', 'warning');
@@ -135,7 +166,7 @@ class CameraPoseVisualizer {
         }
         
         // Parse the input for multiple trajectories
-        const result = PoseParser.parseMultiple(input);
+        const result = PoseParser.parseMultiple(input, inputFormat);
         
         if (!result.success) {
             const errorMsg = result.errors.length > 0 ? result.errors.join('; ') : 'Failed to parse input';

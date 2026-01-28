@@ -12,9 +12,10 @@ export class PoseParser {
      *   [[[1,0,0,0], ...], ...]
      * 
      * @param {string} input - The input string potentially containing multiple trajectories
+     * @param {string} format - The input format ('matrix', 'xyz_quat_wxyz', 'xyz_quat_xyzw')
      * @returns {Object} - { success: boolean, trajectories: array, errors: array, totalCount: number }
      */
-    static parseMultiple(input) {
+    static parseMultiple(input, format = 'matrix') {
         const trajectories = [];
         const errors = [];
         let totalCount = 0;
@@ -35,7 +36,7 @@ export class PoseParser {
             // Extract name from # comment if present
             const { name, content } = this.extractNameFromBlock(block, index);
             
-            const result = this.parse(content);
+            const result = this.parse(content, format);
             if (result.success) {
                 trajectories.push({
                     id: index,
@@ -159,9 +160,10 @@ export class PoseParser {
      * Parse a Python-like list string into a JavaScript array
      * Supports nested arrays, numbers (including scientific notation), and basic Python syntax
      * @param {string} input - The Python-like list string
+     * @param {string} format - The input format ('matrix', 'xyz_quat_wxyz', 'xyz_quat_xyzw')
      * @returns {Object} - { success: boolean, data: array|null, error: string|null, count: number }
      */
-    static parse(input) {
+    static parse(input, format = 'matrix') {
         try {
             // Preprocess the input
             let processed = this.preprocess(input);
@@ -169,13 +171,13 @@ export class PoseParser {
             // Try to parse as JSON first (fastest method)
             try {
                 const data = JSON.parse(processed);
-                const validation = this.validatePoseArray(data);
+                const validation = this.validateAndConvert(data, format);
                 if (validation.valid) {
                     return { 
                         success: true, 
-                        data: data, 
+                        data: validation.data, 
                         error: null, 
-                        count: data.length 
+                        count: validation.data.length 
                     };
                 } else {
                     return { 
@@ -188,13 +190,13 @@ export class PoseParser {
             } catch (jsonError) {
                 // If JSON parsing fails, try a more lenient approach
                 const data = this.parsePythonList(processed);
-                const validation = this.validatePoseArray(data);
+                const validation = this.validateAndConvert(data, format);
                 if (validation.valid) {
                     return { 
                         success: true, 
-                        data: data, 
+                        data: validation.data, 
                         error: null, 
-                        count: data.length 
+                        count: validation.data.length 
                     };
                 } else {
                     return { 
@@ -291,11 +293,12 @@ export class PoseParser {
     }
 
     /**
-     * Validate that the parsed data is a valid pose array [T, 4, 4]
+     * Validate and convert parsed data to [T, 4, 4] format
      * @param {Array} data 
-     * @returns {Object} - { valid: boolean, error: string|null }
+     * @param {string} format 
+     * @returns {Object} - { valid: boolean, data: Array, error: string|null }
      */
-    static validatePoseArray(data) {
+    static validateAndConvert(data, format) {
         if (!Array.isArray(data)) {
             return { valid: false, error: 'Input must be an array' };
         }
@@ -303,37 +306,125 @@ export class PoseParser {
         if (data.length === 0) {
             return { valid: false, error: 'Array is empty' };
         }
-        
-        // Check each pose matrix
+
+        const convertedData = [];
+
+        // Check each pose based on format
         for (let i = 0; i < data.length; i++) {
             const pose = data[i];
             
             if (!Array.isArray(pose)) {
                 return { valid: false, error: `Pose at index ${i} is not an array` };
             }
-            
-            if (pose.length !== 4) {
-                return { valid: false, error: `Pose at index ${i} should have 4 rows, got ${pose.length}` };
-            }
-            
-            for (let j = 0; j < 4; j++) {
-                if (!Array.isArray(pose[j])) {
-                    return { valid: false, error: `Row ${j} of pose ${i} is not an array` };
+
+            if (format === 'matrix') {
+                // Expect [4, 4]
+                if (pose.length !== 4) {
+                    return { valid: false, error: `Pose at index ${i} should have 4 rows, got ${pose.length}` };
                 }
                 
-                if (pose[j].length !== 4) {
-                    return { valid: false, error: `Row ${j} of pose ${i} should have 4 columns, got ${pose[j].length}` };
-                }
-                
-                for (let k = 0; k < 4; k++) {
-                    if (typeof pose[j][k] !== 'number' || isNaN(pose[j][k])) {
-                        return { valid: false, error: `Element [${j}][${k}] of pose ${i} is not a valid number` };
+                for (let j = 0; j < 4; j++) {
+                    if (!Array.isArray(pose[j])) {
+                        return { valid: false, error: `Row ${j} of pose ${i} is not an array` };
+                    }
+                    if (pose[j].length !== 4) {
+                        return { valid: false, error: `Row ${j} of pose ${i} should have 4 columns, got ${pose[j].length}` };
+                    }
+                    for (let k = 0; k < 4; k++) {
+                        if (typeof pose[j][k] !== 'number' || isNaN(pose[j][k])) {
+                            return { valid: false, error: `Element [${j}][${k}] of pose ${i} is not a valid number` };
+                        }
                     }
                 }
+                convertedData.push(pose);
+
+            } else if (format === 'xyz_quat_wxyz' || format === 'xyz_quat_xyzw' || format === 'quat_wxyz_xyz') {
+                // Expect [7] (x, y, z, q1, q2, q3, q4)
+                if (pose.length !== 7) {
+                    return { valid: false, error: `Pose at index ${i} should have 7 elements, got ${pose.length}` };
+                }
+
+                for (let k = 0; k < 7; k++) {
+                    if (typeof pose[k] !== 'number' || isNaN(pose[k])) {
+                        return { valid: false, error: `Element ${k} of pose ${i} is not a valid number` };
+                    }
+                }
+
+                // Convert to 4x4 matrix
+                let x, y, z, qw, qx, qy, qz;
+                
+                if (format === 'quat_wxyz_xyz') {
+                    // qw, qx, qy, qz, x, y, z
+                    qw = pose[0];
+                    qx = pose[1];
+                    qy = pose[2];
+                    qz = pose[3];
+                    x = pose[4];
+                    y = pose[5];
+                    z = pose[6];
+                } else {
+                    // x, y, z first
+                    x = pose[0];
+                    y = pose[1];
+                    z = pose[2];
+                    
+                    if (format === 'xyz_quat_wxyz') {
+                        // w, x, y, z
+                        qw = pose[3];
+                        qx = pose[4];
+                        qy = pose[5];
+                        qz = pose[6];
+                    } else {
+                        // x, y, z, w
+                        qx = pose[3];
+                        qy = pose[4];
+                        qz = pose[5];
+                        qw = pose[6];
+                    }
+                }
+
+                const matrix = this.quatToMatrix(x, y, z, qx, qy, qz, qw);
+                convertedData.push(matrix);
+            } else {
+                return { valid: false, error: `Unknown format: ${format}` };
             }
         }
         
-        return { valid: true, error: null };
+        return { valid: true, data: convertedData, error: null };
+    }
+
+    /**
+     * Convert position and quaternion to 4x4 matrix
+     */
+    static quatToMatrix(x, y, z, qx, qy, qz, qw) {
+        // Normalize quaternion
+        const len = Math.sqrt(qx*qx + qy*qy + qz*qz + qw*qw);
+        if (len > 0) {
+            qx /= len;
+            qy /= len;
+            qz /= len;
+            qw /= len;
+        }
+
+        const x2 = qx + qx;
+        const y2 = qy + qy;
+        const z2 = qz + qz;
+        const xx = qx * x2;
+        const xy = qx * y2;
+        const xz = qx * z2;
+        const yy = qy * y2;
+        const yz = qy * z2;
+        const zz = qz * z2;
+        const wx = qw * x2;
+        const wy = qw * y2;
+        const wz = qw * z2;
+
+        return [
+            [1 - (yy + zz), xy - wz, xz + wy, x],
+            [xy + wz, 1 - (xx + zz), yz - wx, y],
+            [xz - wy, yz + wx, 1 - (xx + yy), z],
+            [0, 0, 0, 1]
+        ];
     }
 
     /**
@@ -435,4 +526,3 @@ export class PoseParser {
         return JSON.stringify(poses, null, indent);
     }
 }
-

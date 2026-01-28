@@ -31,7 +31,7 @@
                     <i class="fas fa-code"></i>
                     Pose Sequence Input
                 </h2>
-                <p class="help mb-3">Paste Python-like lists of shape [T, 4, 4]. Separate multiple trajectories with blank lines. Use <code># Name</code> to label each.</p>
+                <p class="help mb-3">Paste Python-like lists. Separate multiple trajectories with blank lines. Use <code># Name</code> to label each.</p>
                 <div class="field">
                     <div class="control">
                         <textarea id="pose-input" class="textarea code-input" rows="16" placeholder="[
@@ -64,7 +64,21 @@
                 </h2>
                 
                 <div class="field">
-                    <label class="label is-small">Pose Format</label>
+                    <label class="label is-small">Input Format</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select id="input-format">
+                                <option value="matrix">4x4 Matrix [T, 4, 4]</option>
+                                <option value="xyz_quat_wxyz">XYZ + Quat (WXYZ) [T, 7]</option>
+                                <option value="xyz_quat_xyzw">XYZ + Quat (XYZW) [T, 7]</option>
+                                <option value="quat_wxyz_xyz">Quat (WXYZ) + XYZ [T, 7]</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label is-small">Pose Coordinate Space</label>
                     <div class="control">
                         <div class="select is-fullwidth">
                             <select id="pose-format">
