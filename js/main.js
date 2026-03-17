@@ -39,7 +39,22 @@ class CameraPoseVisualizer {
             trajectoryList: document.getElementById('trajectory-list'),
             
             // Canvas
-            canvas: document.getElementById('three-canvas')
+            canvas: document.getElementById('three-canvas'),
+
+            // Video export
+            exportWidth: document.getElementById('export-width'),
+            exportHeight: document.getElementById('export-height'),
+            exportFps: document.getElementById('export-fps'),
+            exportHold: document.getElementById('export-hold'),
+            exportFormat: document.getElementById('export-format'),
+            exportPreview: document.getElementById('export-preview'),
+            exportBtn: document.getElementById('export-btn'),
+            exportDuration: document.getElementById('export-duration'),
+            exportProgress: document.getElementById('export-progress'),
+            exportProgressBar: document.getElementById('export-progress-bar'),
+            exportProgressText: document.getElementById('export-progress-text'),
+            exportStatus: document.getElementById('export-status'),
+            exportPreviewMask: document.getElementById('export-preview-mask')
         };
         
         // Scene manager
@@ -60,6 +75,9 @@ class CameraPoseVisualizer {
         
         // Load sample data for demonstration
         this.loadSampleData();
+
+        // Initialize preview mask
+        this.updatePreviewMask();
     }
 
     setupEventListeners() {
@@ -147,6 +165,23 @@ class CameraPoseVisualizer {
             this.toggleSettingsPanel();
         });
         
+        // Video export
+        this.ui.exportWidth.addEventListener('input', () => {
+            this.updatePreviewMask();
+            this.updateExportDuration();
+        });
+        this.ui.exportHeight.addEventListener('input', () => {
+            this.updatePreviewMask();
+            this.updateExportDuration();
+        });
+        this.ui.exportFps.addEventListener('input', () => this.updateExportDuration());
+        this.ui.exportHold.addEventListener('input', () => this.updateExportDuration());
+        this.ui.exportPreview.addEventListener('change', () => this.updatePreviewMask());
+        this.ui.exportBtn.addEventListener('click', () => this.handleExport());
+
+        // Update preview mask on window resize
+        window.addEventListener('resize', () => this.updatePreviewMask());
+
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             // Ctrl+Enter to visualize
@@ -255,6 +290,7 @@ class CameraPoseVisualizer {
         `;
         
         this.ui.poseInfo.innerHTML = html;
+        this.updateExportDuration();
     }
 
     updateTrajectoryList() {
@@ -353,6 +389,118 @@ class CameraPoseVisualizer {
         this.sceneManager.setTrajectories(this.currentTrajectories, 'c2w', 'opengl');
         this.updateInfoPanel();
         this.updateTrajectoryList();
+    }
+
+    updatePreviewMask() {
+        const mask = this.ui.exportPreviewMask;
+        if (!this.ui.exportPreview.checked) {
+            mask.classList.add('is-hidden');
+            return;
+        }
+
+        const container = document.getElementById('viewport-container');
+        const viewW = container.clientWidth;
+        const viewH = container.clientHeight;
+        const exportW = parseInt(this.ui.exportWidth.value) || 1920;
+        const exportH = parseInt(this.ui.exportHeight.value) || 1080;
+        const exportAspect = exportW / exportH;
+        const viewAspect = viewW / viewH;
+
+        let rectW, rectH;
+        if (exportAspect > viewAspect) {
+            rectW = viewW;
+            rectH = viewW / exportAspect;
+        } else {
+            rectH = viewH;
+            rectW = viewH * exportAspect;
+        }
+
+        const left = (viewW - rectW) / 2;
+        const top = (viewH - rectH) / 2;
+
+        mask.style.left = left + 'px';
+        mask.style.top = top + 'px';
+        mask.style.width = rectW + 'px';
+        mask.style.height = rectH + 'px';
+        mask.classList.remove('is-hidden');
+    }
+
+    updateExportDuration() {
+        const fps = parseInt(this.ui.exportFps.value) || 30;
+        const holdSeconds = parseFloat(this.ui.exportHold.value) || 0;
+        const stats = this.sceneManager.getStats();
+        let maxFrames = 0;
+        if (stats.trajectories) {
+            stats.trajectories.forEach(t => {
+                if (t.visible) maxFrames = Math.max(maxFrames, t.displayed);
+            });
+        }
+        if (maxFrames > 0) {
+            const duration = (maxFrames / fps + holdSeconds).toFixed(1);
+            const holdLabel = holdSeconds > 0 ? ` + ${holdSeconds}s hold` : '';
+            this.ui.exportDuration.textContent = `~${duration}s (${maxFrames} frames${holdLabel})`;
+        } else {
+            this.ui.exportDuration.textContent = '';
+        }
+    }
+
+    async handleExport() {
+        if (this.sceneManager.isExporting) {
+            this.sceneManager.cancelExport();
+            return;
+        }
+
+        const width = parseInt(this.ui.exportWidth.value) || 1920;
+        const height = parseInt(this.ui.exportHeight.value) || 1080;
+        const fps = parseInt(this.ui.exportFps.value) || 30;
+        const holdSeconds = parseFloat(this.ui.exportHold.value) || 0;
+        const format = this.ui.exportFormat.value;
+
+        // Update button to cancel state
+        this.ui.exportBtn.innerHTML = '<span class="icon"><i class="fas fa-stop"></i></span><span>Cancel Export</span>';
+        this.ui.exportBtn.classList.remove('is-primary');
+        this.ui.exportBtn.classList.add('is-danger');
+        this.ui.exportProgress.classList.remove('is-hidden');
+        this.ui.exportStatus.classList.add('is-hidden');
+
+        try {
+            const blob = await this.sceneManager.exportVideo(width, height, fps, holdSeconds, format, (progress) => {
+                const pct = Math.round(progress * 100);
+                this.ui.exportProgressBar.value = pct;
+                this.ui.exportProgressText.textContent = `Exporting... ${pct}%`;
+            });
+
+            if (blob) {
+                const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `camera_poses_${width}x${height}_${fps}fps.${ext}`;
+                a.click();
+                URL.revokeObjectURL(url);
+                this.showExportStatus('Video exported successfully!', 'success');
+            } else {
+                this.showExportStatus('Export cancelled', 'warning');
+            }
+        } catch (e) {
+            this.showExportStatus(`Export failed: ${e.message}`, 'error');
+        }
+
+        // Restore button
+        this.ui.exportBtn.innerHTML = '<span class="icon"><i class="fas fa-download"></i></span><span>Export Video</span>';
+        this.ui.exportBtn.classList.remove('is-danger');
+        this.ui.exportBtn.classList.add('is-primary');
+        this.ui.exportProgress.classList.add('is-hidden');
+    }
+
+    showExportStatus(message, type) {
+        const el = this.ui.exportStatus;
+        el.textContent = message;
+        el.classList.remove('is-hidden', 'is-success', 'is-danger', 'is-warning');
+        el.classList.add(type === 'success' ? 'is-success' : type === 'error' ? 'is-danger' : 'is-warning');
+        if (type === 'success') {
+            setTimeout(() => el.classList.add('is-hidden'), 5000);
+        }
     }
 
     toggleSettingsPanel() {

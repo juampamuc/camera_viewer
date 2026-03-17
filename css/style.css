@@ -510,3 +510,53 @@ html, body {
     color: var(--text-muted);
     font-size: 0.7rem;
 }
+
+/* Video Export Box */
+.export-box .field.has-addons {
+    display: flex;
+}
+
+.export-box .field.has-addons .control.is-expanded {
+    flex: 1;
+}
+
+.export-box .field.has-addons .button.is-static {
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+    pointer-events: none;
+    font-weight: 600;
+}
+
+.export-box .checkbox {
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.export-box input[type="checkbox"] {
+    accent-color: var(--accent-primary);
+    width: 14px;
+    height: 14px;
+}
+
+.export-box .progress {
+    height: 0.5rem;
+    border-radius: 4px;
+    margin-bottom: 0.25rem;
+}
+
+/* Export Preview Mask */
+.export-preview-mask {
+    position: absolute;
+    pointer-events: none;
+    z-index: 50;
+    border: 2px dashed rgba(255, 100, 50, 0.9);
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.3);
+}
+
+.export-preview-mask.is-hidden {
+    display: none;
+}

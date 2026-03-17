@@ -102,6 +102,77 @@
                 </div>
             </div>
             
+            <!-- Video Export Section -->
+            <div class="box export-box">
+                <h2 class="subtitle is-6">
+                    <i class="fas fa-video"></i>
+                    Video Export
+                </h2>
+
+                <div class="field">
+                    <label class="label is-small">Resolution</label>
+                    <div class="field has-addons mb-0">
+                        <div class="control is-expanded">
+                            <input id="export-width" type="number" class="input is-small" value="1920" min="100" max="7680">
+                        </div>
+                        <div class="control">
+                            <a class="button is-small is-static">&times;</a>
+                        </div>
+                        <div class="control is-expanded">
+                            <input id="export-height" type="number" class="input is-small" value="1080" min="100" max="4320">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label is-small">FPS</label>
+                    <div class="control">
+                        <input id="export-fps" type="number" class="input is-small" value="30" min="1" max="120">
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label is-small">Hold End (s)</label>
+                    <div class="control">
+                        <input id="export-hold" type="number" class="input is-small" value="0" min="0" max="30" step="0.5">
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label is-small">Format</label>
+                    <div class="control">
+                        <div class="select is-fullwidth is-small">
+                            <select id="export-format">
+                                <option value="mp4">MP4</option>
+                                <option value="webm">WebM</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="checkbox is-small">
+                        <input id="export-preview" type="checkbox" checked>
+                        Show Preview Mask
+                    </label>
+                </div>
+
+                <div class="field">
+                    <button id="export-btn" class="button is-primary is-fullwidth">
+                        <span class="icon"><i class="fas fa-download"></i></span>
+                        <span>Export Video</span>
+                    </button>
+                    <p id="export-duration" class="help has-text-centered mt-1"></p>
+                </div>
+
+                <div id="export-progress" class="is-hidden">
+                    <progress id="export-progress-bar" class="progress is-small is-primary" value="0" max="100">0%</progress>
+                    <p id="export-progress-text" class="help has-text-centered"></p>
+                </div>
+
+                <div id="export-status" class="notification is-hidden"></div>
+            </div>
+
             <!-- Info Section -->
             <div class="box info-box">
                 <h2 class="subtitle is-6">
@@ -236,6 +307,9 @@
             <div id="viewport-container">
                 <canvas id="three-canvas"></canvas>
             </div>
+
+            <!-- Export Preview Mask -->
+            <div id="export-preview-mask" class="export-preview-mask is-hidden"></div>
         </div>
     </div>
     

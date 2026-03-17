@@ -30,6 +30,10 @@ export class SceneManager {
         
         // Current convention (needed for axis visualization)
         this.currentConvention = 'opengl';
+
+        // Export state
+        this.isExporting = false;
+        this.exportCancelled = false;
         
         // Distinct hues for different trajectories (colorByTime uses dark-to-bright of same hue)
         this.trajectoryHues = [
@@ -373,6 +377,7 @@ export class SceneManager {
      * Update frustum rendering based on current settings
      */
     updateFrustums() {
+        if (this.isExporting) return;
         const step = Math.max(1, Math.floor(this.settings.frameStep));
         
         this.trajectories.forEach((traj, trajIndex) => {
@@ -652,6 +657,161 @@ export class SceneManager {
         const color = new THREE.Color();
         color.setHSL(hue, 0.75, 0.5);
         return '#' + color.getHexString();
+    }
+
+    /**
+     * Export the visualization as a video.
+     * Animates frames appearing one by one (first to last), then holds.
+     */
+    async exportVideo(width, height, fps, holdSeconds, format, onProgress) {
+        if (this.isExporting) return null;
+        this.isExporting = true;
+        this.exportCancelled = false;
+
+        // Create offscreen canvas and renderer
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = width;
+        offCanvas.height = height;
+
+        const offRenderer = new THREE.WebGLRenderer({
+            canvas: offCanvas,
+            antialias: true,
+            preserveDrawingBuffer: true
+        });
+        offRenderer.setPixelRatio(1);
+        offRenderer.setSize(width, height);
+
+        // Clone camera with export aspect ratio
+        const exportCamera = this.camera.clone();
+        exportCamera.aspect = width / height;
+        exportCamera.updateProjectionMatrix();
+
+        // Collect line materials for resolution switching
+        const lineMaterials = [];
+        this.scene.traverse(obj => {
+            if (obj.material && obj.material.resolution) {
+                lineMaterials.push(obj.material);
+            }
+        });
+        const exportRes = new THREE.Vector2(width, height);
+        const viewportRes = new THREE.Vector2(this.canvas.clientWidth, this.canvas.clientHeight);
+
+        // Count displayed frames per trajectory
+        const trajFrameCounts = this.trajectories.map(traj =>
+            traj.group ? traj.group.children.length : 0
+        );
+        const maxFrames = Math.max(...trajFrameCounts, 0);
+
+        if (maxFrames === 0) {
+            this.isExporting = false;
+            offRenderer.dispose();
+            return null;
+        }
+
+        const holdFrames = Math.round((holdSeconds || 0) * fps);
+        const totalVideoFrames = maxFrames + holdFrames;
+
+        // Set up MediaRecorder via captureStream
+        const stream = offCanvas.captureStream(0);
+        const videoTrack = stream.getVideoTracks()[0];
+
+        // Select mime type based on requested format with fallback
+        let mimeType;
+        if (format === 'mp4') {
+            if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) {
+                mimeType = 'video/mp4;codecs=avc1';
+            } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+                mimeType = 'video/mp4';
+            } else {
+                // Fallback to webm if mp4 not supported
+                mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+                    ? 'video/webm;codecs=vp9' : 'video/webm';
+            }
+        } else {
+            mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+                ? 'video/webm;codecs=vp9' : 'video/webm';
+        }
+
+        const mediaRecorder = new MediaRecorder(stream, {
+            mimeType,
+            videoBitsPerSecond: 8_000_000
+        });
+
+        const chunks = [];
+        mediaRecorder.ondataavailable = e => {
+            if (e.data.size > 0) chunks.push(e.data);
+        };
+
+        // Save current child visibility state
+        const savedState = this.trajectories.map(traj =>
+            traj.group.children.map(c => c.visible)
+        );
+
+        return new Promise((resolve) => {
+            mediaRecorder.onstop = () => {
+                // Restore child visibility
+                this.trajectories.forEach((traj, i) => {
+                    traj.group.children.forEach((child, j) => {
+                        child.visible = savedState[i][j] ?? true;
+                    });
+                });
+                // Restore line material resolutions
+                lineMaterials.forEach(m => m.resolution.copy(viewportRes));
+
+                offRenderer.dispose();
+                this.isExporting = false;
+
+                if (this.exportCancelled) {
+                    resolve(null);
+                } else {
+                    resolve(new Blob(chunks, { type: mimeType }));
+                }
+            };
+
+            mediaRecorder.start();
+
+            let frame = 0;
+            const renderNext = () => {
+                if (this.exportCancelled || frame >= totalVideoFrames) {
+                    mediaRecorder.stop();
+                    return;
+                }
+
+                const animStep = Math.min(frame, maxFrames - 1);
+
+                // Reveal frustums 0..animStep for each trajectory
+                this.trajectories.forEach((traj, ti) => {
+                    const count = trajFrameCounts[ti];
+                    traj.group.children.forEach((child, ci) => {
+                        child.visible = ci <= animStep && ci < count;
+                    });
+                });
+
+                // Switch line material resolutions for export render
+                lineMaterials.forEach(m => m.resolution.copy(exportRes));
+                offRenderer.render(this.scene, exportCamera);
+                lineMaterials.forEach(m => m.resolution.copy(viewportRes));
+
+                // Capture frame
+                if (videoTrack.requestFrame) {
+                    videoTrack.requestFrame();
+                }
+
+                frame++;
+                if (onProgress) onProgress(frame / totalVideoFrames);
+
+                setTimeout(renderNext, 1000 / fps);
+            };
+
+            renderNext();
+        });
+    }
+
+    /**
+     * Cancel an in-progress export
+     */
+    cancelExport() {
+        this.exportCancelled = true;
     }
 }
 
