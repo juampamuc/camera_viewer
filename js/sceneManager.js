@@ -53,7 +53,7 @@ export class SceneManager {
             frustumSize: 0.2,
             fov: 60,
             aspectRatio: 1.33,
-            whiteBackground: true,  // Default to white background
+            backgroundColor: '#f5f5f5',
             showAxes: true,
             showFrustum: true,
             showGrid: true,
@@ -110,11 +110,16 @@ export class SceneManager {
     }
 
     updateBackgroundColor() {
-        if (this.settings.whiteBackground) {
-            this.scene.background = new THREE.Color(0xf5f5f5);
-        } else {
-            this.scene.background = new THREE.Color(0x111827);
-        }
+        this.scene.background = new THREE.Color(this.settings.backgroundColor);
+    }
+
+    /**
+     * Whether the current background is light (luminance > 0.5)
+     */
+    isLightBackground() {
+        const c = new THREE.Color(this.settings.backgroundColor);
+        // Relative luminance
+        return (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) > 0.5;
     }
 
     createGrid() {
@@ -122,7 +127,7 @@ export class SceneManager {
             this.scene.remove(this.gridHelper);
         }
         
-        const gridColor = this.settings.whiteBackground ? 0xcccccc : 0x2a4a6e;
+        const gridColor = this.isLightBackground() ? 0xcccccc : 0x2a4a6e;
         this.gridHelper = new THREE.GridHelper(10, 20, gridColor, gridColor);
         this.gridHelper.visible = this.settings.showGrid;
         this.scene.add(this.gridHelper);
@@ -141,7 +146,7 @@ export class SceneManager {
         const xGeom = new LineGeometry();
         xGeom.setPositions([0, 0, 0, axisLength, 0, 0]);
         const xMat = new LineMaterial({
-            color: this.settings.whiteBackground ? 0xd94848 : 0xff6b6b,
+            color: this.isLightBackground() ? 0xd94848 : 0xff6b6b,
             linewidth: 3,
             resolution: resolution
         });
@@ -151,7 +156,7 @@ export class SceneManager {
         const yGeom = new LineGeometry();
         yGeom.setPositions([0, 0, 0, 0, axisLength, 0]);
         const yMat = new LineMaterial({
-            color: this.settings.whiteBackground ? 0x2f9e44 : 0x51cf66,
+            color: this.isLightBackground() ? 0x2f9e44 : 0x51cf66,
             linewidth: 3,
             resolution: resolution
         });
@@ -161,7 +166,7 @@ export class SceneManager {
         const zGeom = new LineGeometry();
         zGeom.setPositions([0, 0, 0, 0, 0, axisLength]);
         const zMat = new LineMaterial({
-            color: this.settings.whiteBackground ? 0x1c7ed6 : 0x4dabf7,
+            color: this.isLightBackground() ? 0x1c7ed6 : 0x4dabf7,
             linewidth: 3,
             resolution: resolution
         });
@@ -209,7 +214,7 @@ export class SceneManager {
             const t = totalCount > 1 ? index / (totalCount - 1) : 0;
             
             let lightness;
-            if (this.settings.whiteBackground) {
+            if (this.isLightBackground()) {
                 // Light background: avoid very bright colors (0.1 to 0.75)
                 lightness = 0.1 + t * 0.65;
             } else {
@@ -262,7 +267,7 @@ export class SceneManager {
             const xGeom = new LineGeometry();
             xGeom.setPositions([0, 0, 0, axisLength, 0, 0]);
             const xMat = new LineMaterial({
-                color: this.settings.whiteBackground ? 0xd94848 : 0xff6b6b,
+                color: this.isLightBackground() ? 0xd94848 : 0xff6b6b,
                 linewidth: axisLineWidth,
                 resolution: resolution
             });
@@ -272,7 +277,7 @@ export class SceneManager {
             const yGeom = new LineGeometry();
             yGeom.setPositions([0, 0, 0, 0, ySign * axisLength, 0]);
             const yMat = new LineMaterial({
-                color: this.settings.whiteBackground ? 0x2f9e44 : 0x51cf66,
+                color: this.isLightBackground() ? 0x2f9e44 : 0x51cf66,
                 linewidth: axisLineWidth,
                 resolution: resolution
             });
@@ -282,7 +287,7 @@ export class SceneManager {
             const zGeom = new LineGeometry();
             zGeom.setPositions([0, 0, 0, 0, 0, zSign * axisLength]);
             const zMat = new LineMaterial({
-                color: this.settings.whiteBackground ? 0x1c7ed6 : 0x4dabf7,
+                color: this.isLightBackground() ? 0x1c7ed6 : 0x4dabf7,
                 linewidth: axisLineWidth,
                 resolution: resolution
             });
@@ -551,7 +556,7 @@ export class SceneManager {
         this.settings[key] = value;
         
         switch (key) {
-            case 'whiteBackground':
+            case 'backgroundColor':
                 this.updateBackgroundColor();
                 this.createGrid();
                 this.createWorldAxes();

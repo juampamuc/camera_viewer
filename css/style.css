@@ -359,6 +359,11 @@ html, body {
     font-size: 0.8rem;
 }
 
+.viewport-settings input[type="color"].input.is-small {
+    padding: 2px;
+    cursor: pointer;
+}
+
 .viewport-settings .input.is-small:focus {
     border-color: var(--accent-primary);
     box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
