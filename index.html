@@ -28,13 +28,29 @@
             <!-- Pose Input Section -->
             <div class="box code-box">
                 <h2 class="subtitle is-6">
-                    <i class="fas fa-code"></i>
-                    Pose Sequence Input
+                    <i class="fas fa-plus"></i>
+                    Add Trajectory
                 </h2>
-                <p class="help mb-3">Paste Python-like lists. Separate multiple trajectories with blank lines. Use <code># Name</code> to label each.</p>
-                <div class="field">
-                    <div class="control">
-                        <textarea id="pose-input" class="textarea code-input" rows="16" placeholder="[
+                <div id="composer-collapsed" class="composer-collapsed is-hidden">
+                    <div>
+                        <strong>Ready for another</strong>
+                        <p class="help mb-0">Input cleared.</p>
+                    </div>
+                    <button id="expand-composer-btn" class="button is-small is-outlined">
+                        <span class="icon"><i class="fas fa-plus"></i></span>
+                        <span>Add another</span>
+                    </button>
+                </div>
+                <div id="trajectory-composer">
+                    <div class="field">
+                        <label class="label is-small">Name</label>
+                        <div class="control">
+                            <input id="trajectory-name-input" type="text" class="input is-small" placeholder="Trajectory name">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <div class="control">
+                            <textarea id="pose-input" class="textarea code-input" rows="12" placeholder="[
   [[1, 0, 0, 0],
    [0, 1, 0, 0],
    [0, 0, 1, 0],
@@ -45,15 +61,44 @@
    [0, 0, 0, 1]],
   ...
 ]"></textarea>
+                        </div>
+                    </div>
+                    <div class="field is-grouped">
+                        <div class="control is-expanded">
+                            <button id="add-traj-btn" class="button is-primary is-fullwidth">
+                                <span class="icon"><i class="fas fa-plus"></i></span>
+                                <span>Add Traj</span>
+                            </button>
+                        </div>
+                        <div class="control">
+                            <button id="clear-input-btn" class="button is-light" title="Clear input" aria-label="Clear input">
+                                <span class="icon"><i class="fas fa-eraser"></i></span>
+                            </button>
+                        </div>
+                        <div class="control">
+                            <button id="cancel-edit-btn" class="button is-light is-hidden" title="Cancel edit" aria-label="Cancel edit">
+                                <span class="icon"><i class="fas fa-times"></i></span>
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <div class="field">
-                    <button id="visualize-btn" class="button is-primary is-fullwidth">
-                        <span class="icon"><i class="fas fa-play"></i></span>
-                        <span>Visualize</span>
+                <div id="parse-status" class="notification is-hidden"></div>
+            </div>
+
+            <!-- Trajectory Manager Section -->
+            <div class="box trajectories-box">
+                <div class="section-header">
+                    <h2 class="subtitle is-6 mb-0">
+                        <i class="fas fa-route"></i>
+                        Trajectories
+                    </h2>
+                    <button id="clear-trajectories-btn" class="button is-small is-light" title="Clear all" aria-label="Clear all trajectories">
+                        <span class="icon"><i class="fas fa-trash"></i></span>
                     </button>
                 </div>
-                <div id="parse-status" class="notification is-hidden"></div>
+                <div id="trajectory-list" class="trajectory-list trajectory-list-left">
+                    <p class="has-text-grey is-size-7">No trajectories</p>
+                </div>
             </div>
             
             <!-- Pose Settings Section -->
@@ -291,14 +336,6 @@
                         </label>
                     </div>
                     
-                    <!-- Trajectory visibility list -->
-                    <div class="trajectory-section mt-3">
-                        <label class="label is-small mb-1">Trajectories</label>
-                        <div id="trajectory-list" class="trajectory-list">
-                            <p class="has-text-grey is-size-7">No trajectories</p>
-                        </div>
-                    </div>
-                    
                     <div class="field mt-3">
                         <button id="reset-view-btn" class="button is-small is-outlined is-fullwidth">
                             <span class="icon"><i class="fas fa-sync"></i></span>
@@ -333,4 +370,3 @@
     <script type="module" src="js/main.js"></script>
 </body>
 </html>
-

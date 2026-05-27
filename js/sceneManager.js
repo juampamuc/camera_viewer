@@ -35,16 +35,15 @@ export class SceneManager {
         this.isExporting = false;
         this.exportCancelled = false;
         
-        // Distinct hues for different trajectories (colorByTime uses dark-to-bright of same hue)
-        this.trajectoryHues = [
-            0.0,    // Red
-            0.58,   // Blue
-            0.33,   // Green
-            0.08,   // Orange
-            0.75,   // Purple
-            0.50,   // Cyan
-            0.92,   // Pink/Magenta
-            0.17,   // Yellow
+        this.defaultTrajectoryColors = [
+            '#e53935',
+            '#1e88e5',
+            '#43a047',
+            '#fb8c00',
+            '#8e24aa',
+            '#00acc1',
+            '#d81b60',
+            '#fdd835'
         ];
         
         // Settings
@@ -182,8 +181,9 @@ export class SceneManager {
      * @param {number} index - Frame index within trajectory
      * @param {number} totalCount - Total frames in trajectory
      * @param {number} trajectoryIndex - Which trajectory this belongs to
+     * @param {string} trajectoryColor - Base trajectory color
      */
-    createFrustum(poseMatrix, index, totalCount, trajectoryIndex = 0) {
+    createFrustum(poseMatrix, index, totalCount, trajectoryIndex = 0, trajectoryColor = null) {
         const group = new THREE.Group();
         
         const fov = this.settings.fov;
@@ -204,14 +204,13 @@ export class SceneManager {
         
         const resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
         
-        // Determine frustum color
-        let frustumColor;
-        const hue = this.trajectoryHues[trajectoryIndex % this.trajectoryHues.length];
-        frustumColor = new THREE.Color();
+        const baseColor = new THREE.Color(trajectoryColor || this.getDefaultTrajectoryColor(trajectoryIndex));
+        const frustumColor = new THREE.Color();
         
         if (this.settings.colorByTime && totalCount > 1) {
-            // Same hue, but dark-to-bright transition for time visualization
             const t = totalCount > 1 ? index / (totalCount - 1) : 0;
+            const hsl = {};
+            baseColor.getHSL(hsl);
             
             let lightness;
             if (this.isLightBackground()) {
@@ -222,10 +221,9 @@ export class SceneManager {
                 lightness = 0.25 + t * 0.65;
             }
             
-            frustumColor.setHSL(hue, 1.0, lightness);
+            frustumColor.setHSL(hsl.h, Math.max(hsl.s, 0.35), lightness);
         } else {
-            // Use fixed mid-brightness color per trajectory
-            frustumColor.setHSL(hue, 0.75, 0.5);
+            frustumColor.copy(baseColor);
         }
         
         // Line pairs for frustum edges
@@ -303,10 +301,11 @@ export class SceneManager {
     }
 
     /**
-     * Update the scene with multiple trajectories (resets view)
+     * Update the scene with multiple trajectories.
      * @param {Array} trajectories - Array of { id, name, poses, count, visible }
      */
-    setTrajectories(trajectories, poseFormat = 'c2w', convention = 'opengl') {
+    setTrajectories(trajectories, poseFormat = 'c2w', convention = 'opengl', options = {}) {
+        const { resetView = true } = options;
         this.currentConvention = convention;
         
         // Clear existing trajectory groups
@@ -321,13 +320,17 @@ export class SceneManager {
             
             return {
                 ...traj,
+                visible: traj.visible !== false,
+                color: traj.color || this.getDefaultTrajectoryColor(index),
                 convertedPoses: convertedPoses,
                 group: group
             };
         });
         
         this.updateFrustums();
-        this.fitCameraToScene();
+        if (resetView) {
+            this.fitCameraToScene();
+        }
     }
 
     /**
@@ -340,6 +343,9 @@ export class SceneManager {
         this.trajectories.forEach((traj, index) => {
             if (trajectories[index]) {
                 traj.poses = trajectories[index].poses;
+                traj.name = trajectories[index].name;
+                traj.visible = trajectories[index].visible !== false;
+                traj.color = trajectories[index].color || this.getDefaultTrajectoryColor(index);
                 traj.convertedPoses = PoseConverter.convertAll(traj.poses, poseFormat, convention);
             }
         });
@@ -378,6 +384,21 @@ export class SceneManager {
         }
     }
 
+    setTrajectoryColor(trajectoryId, color) {
+        const traj = this.trajectories.find(t => t.id === trajectoryId);
+        if (!traj) return;
+
+        traj.color = color;
+        this.updateFrustums();
+    }
+
+    setTrajectoryName(trajectoryId, name) {
+        const traj = this.trajectories.find(t => t.id === trajectoryId);
+        if (!traj) return;
+
+        traj.name = name;
+    }
+
     /**
      * Update frustum rendering based on current settings
      */
@@ -407,7 +428,8 @@ export class SceneManager {
                     traj.convertedPoses[frameIdx],
                     displayIdx,
                     framesToShow.length,
-                    trajIndex
+                    trajIndex,
+                    traj.color
                 );
                 traj.group.add(frustum);
             });
@@ -468,7 +490,6 @@ export class SceneManager {
      * Fit the camera to view all frustums
      */
     fitCameraToScene() {
-        // Gather all visible poses from all trajectories
         const allPoses = [];
         this.trajectories.forEach(traj => {
             if (traj.visible && traj.convertedPoses) {
@@ -476,6 +497,11 @@ export class SceneManager {
             }
         });
         
+        this.fitCameraToPoses(allPoses);
+    }
+
+    fitCameraToPoses(poses) {
+        const allPoses = poses || [];
         if (allPoses.length === 0) return;
         
         const bbox = PoseConverter.computeBoundingBox(allPoses);
@@ -505,6 +531,13 @@ export class SceneManager {
         this.camera.lookAt(targetPos);
         
         this.controls.update();
+    }
+
+    focusTrajectory(trajectoryId) {
+        const traj = this.trajectories.find(t => t.id === trajectoryId);
+        if (!traj || !traj.convertedPoses || traj.convertedPoses.length === 0) return;
+
+        this.fitCameraToPoses(traj.convertedPoses);
     }
 
     /**
@@ -641,7 +674,8 @@ export class SceneManager {
                 name: traj.name,
                 count: trajCount,
                 displayed: trajDisplayed,
-                visible: traj.visible
+                visible: traj.visible,
+                color: traj.color
             });
         });
         
@@ -658,10 +692,11 @@ export class SceneManager {
      * Get the color for a trajectory (for UI display)
      */
     getTrajectoryColor(trajectoryIndex) {
-        const hue = this.trajectoryHues[trajectoryIndex % this.trajectoryHues.length];
-        const color = new THREE.Color();
-        color.setHSL(hue, 0.75, 0.5);
-        return '#' + color.getHexString();
+        return this.trajectories[trajectoryIndex]?.color || this.getDefaultTrajectoryColor(trajectoryIndex);
+    }
+
+    getDefaultTrajectoryColor(trajectoryIndex) {
+        return this.defaultTrajectoryColors[trajectoryIndex % this.defaultTrajectoryColors.length];
     }
 
     /**
@@ -819,4 +854,3 @@ export class SceneManager {
         this.exportCancelled = true;
     }
 }
-

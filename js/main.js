@@ -11,7 +11,13 @@ class CameraPoseVisualizer {
         // UI Elements
         this.ui = {
             poseInput: document.getElementById('pose-input'),
-            visualizeBtn: document.getElementById('visualize-btn'),
+            trajectoryNameInput: document.getElementById('trajectory-name-input'),
+            addTrajBtn: document.getElementById('add-traj-btn'),
+            clearInputBtn: document.getElementById('clear-input-btn'),
+            cancelEditBtn: document.getElementById('cancel-edit-btn'),
+            trajectoryComposer: document.getElementById('trajectory-composer'),
+            composerCollapsed: document.getElementById('composer-collapsed'),
+            expandComposerBtn: document.getElementById('expand-composer-btn'),
             parseStatus: document.getElementById('parse-status'),
             poseFormat: document.getElementById('pose-format'),
             inputFormat: document.getElementById('input-format'),
@@ -37,6 +43,7 @@ class CameraPoseVisualizer {
             
             // Trajectory visibility container
             trajectoryList: document.getElementById('trajectory-list'),
+            clearTrajectoriesBtn: document.getElementById('clear-trajectories-btn'),
             
             // Canvas
             canvas: document.getElementById('three-canvas'),
@@ -62,6 +69,8 @@ class CameraPoseVisualizer {
         
         // Current trajectories data
         this.currentTrajectories = [];
+        this.nextTrajectoryId = 0;
+        this.editingTrajectoryId = null;
         
         this.init();
     }
@@ -81,8 +90,11 @@ class CameraPoseVisualizer {
     }
 
     setupEventListeners() {
-        // Visualize button
-        this.ui.visualizeBtn.addEventListener('click', () => this.visualize());
+        this.ui.addTrajBtn.addEventListener('click', () => this.addOrUpdateTrajectory());
+        this.ui.clearInputBtn.addEventListener('click', () => this.clearComposerInput());
+        this.ui.cancelEditBtn.addEventListener('click', () => this.exitEditMode());
+        this.ui.expandComposerBtn.addEventListener('click', () => this.expandComposer());
+        this.ui.clearTrajectoriesBtn.addEventListener('click', () => this.clearTrajectories());
         
         // Pose settings changes
         this.ui.poseFormat.addEventListener('change', () => this.onPoseSettingsChange());
@@ -182,16 +194,14 @@ class CameraPoseVisualizer {
         // Update preview mask on window resize
         window.addEventListener('resize', () => this.updatePreviewMask());
 
-        // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            // Ctrl+Enter to visualize
             if (e.ctrlKey && e.key === 'Enter') {
-                this.visualize();
+                this.addOrUpdateTrajectory();
             }
         });
     }
 
-    visualize() {
+    addOrUpdateTrajectory() {
         const input = this.ui.poseInput.value.trim();
         const inputFormat = this.ui.inputFormat.value;
         
@@ -208,25 +218,89 @@ class CameraPoseVisualizer {
             this.showStatus(errorMsg, 'error');
             return;
         }
-        
-        this.currentTrajectories = result.trajectories;
-        
-        // Get pose settings
+
+        if (this.editingTrajectoryId !== null) {
+            this.updateExistingTrajectory(input, inputFormat, result);
+            return;
+        }
+
+        const hadTrajectories = this.currentTrajectories.length > 0;
+        const sourceBlocks = PoseParser.splitIntoBlocks(input);
+        const addedTrajectories = result.trajectories.map((traj, index) => {
+            const globalIndex = this.currentTrajectories.length + index;
+            const explicitName = this.ui.trajectoryNameInput.value.trim();
+            const defaultLocalName = `Trajectory ${index + 1}`;
+            const parsedName = traj.name && traj.name !== defaultLocalName
+                ? traj.name
+                : `Trajectory ${globalIndex + 1}`;
+
+            return {
+                id: this.nextTrajectoryId++,
+                name: explicitName && result.trajectories.length === 1 ? explicitName : parsedName,
+                poses: traj.poses,
+                count: traj.count,
+                visible: true,
+                color: this.sceneManager.getDefaultTrajectoryColor(globalIndex),
+                source: sourceBlocks[index] || input,
+                inputFormat
+            };
+        });
+
+        this.currentTrajectories.push(...addedTrajectories);
+        this.refreshTrajectories({ resetView: !hadTrajectories });
+
+        const trajCount = addedTrajectories.length;
+        const poseCount = result.totalCount;
+        const message = trajCount > 1
+            ? `Added ${trajCount} trajectories with ${poseCount} total poses`
+            : `Added ${poseCount} poses`;
+        this.showStatus(message, 'success');
+        this.clearComposerInput({ hideStatus: false });
+        this.collapseComposer();
+    }
+
+    visualize() {
+        this.addOrUpdateTrajectory();
+    }
+
+    updateExistingTrajectory(input, inputFormat, result) {
+        if (result.trajectories.length !== 1) {
+            this.showStatus('Edit mode accepts one trajectory at a time', 'warning');
+            return;
+        }
+
+        const index = this.currentTrajectories.findIndex(t => t.id === this.editingTrajectoryId);
+        if (index === -1) {
+            this.showStatus('Trajectory no longer exists', 'error');
+            this.exitEditMode();
+            return;
+        }
+
+        const existing = this.currentTrajectories[index];
+        const parsed = result.trajectories[0];
+        const explicitName = this.ui.trajectoryNameInput.value.trim();
+        const parsedName = parsed.name && parsed.name !== 'Trajectory 1' ? parsed.name : existing.name;
+
+        this.currentTrajectories[index] = {
+            ...existing,
+            name: explicitName || parsedName,
+            poses: parsed.poses,
+            count: parsed.count,
+            source: input,
+            inputFormat
+        };
+
+        this.refreshTrajectories({ resetView: false });
+        this.showStatus(`Updated ${this.currentTrajectories[index].name}`, 'success');
+        this.clearComposerInput({ hideStatus: false });
+        this.exitEditMode({ clearInput: false, hideStatus: false });
+        this.collapseComposer();
+    }
+
+    refreshTrajectories({ resetView = false } = {}) {
         const poseFormat = this.ui.poseFormat.value;
         const convention = this.ui.coordConvention.value;
-        
-        // Update scene with all trajectories
-        this.sceneManager.setTrajectories(this.currentTrajectories, poseFormat, convention);
-        
-        // Show success message
-        const trajCount = result.trajectories.length;
-        const poseCount = result.totalCount;
-        const message = trajCount > 1 
-            ? `Loaded ${trajCount} trajectories with ${poseCount} total poses`
-            : `Loaded ${poseCount} poses`;
-        this.showStatus(message, 'success');
-        
-        // Update info panel and trajectory list
+        this.sceneManager.setTrajectories(this.currentTrajectories, poseFormat, convention, { resetView });
         this.updateInfoPanel();
         this.updateTrajectoryList();
     }
@@ -236,6 +310,8 @@ class CameraPoseVisualizer {
             const poseFormat = this.ui.poseFormat.value;
             const convention = this.ui.coordConvention.value;
             this.sceneManager.updateTrajectoriesKeepView(this.currentTrajectories, poseFormat, convention);
+            this.updateInfoPanel();
+            this.updateTrajectoryList();
         }
     }
 
@@ -269,6 +345,7 @@ class CameraPoseVisualizer {
     updateInfoPanel() {
         if (this.currentTrajectories.length === 0) {
             this.ui.poseInfo.innerHTML = '<p class="has-text-grey-light">No poses loaded</p>';
+            this.ui.exportDuration.textContent = '';
             return;
         }
         
@@ -298,48 +375,202 @@ class CameraPoseVisualizer {
         
         if (this.currentTrajectories.length === 0) {
             this.ui.trajectoryList.innerHTML = '<p class="has-text-grey is-size-7">No trajectories</p>';
+            this.ui.clearTrajectoriesBtn.disabled = true;
             return;
         }
+
+        this.ui.clearTrajectoriesBtn.disabled = false;
         
         let html = '';
         this.currentTrajectories.forEach((traj, index) => {
-            const color = this.sceneManager.getTrajectoryColor(index);
+            const color = this.normalizeColor(traj.color, this.sceneManager.getDefaultTrajectoryColor(index));
             const checked = traj.visible ? 'checked' : '';
+            const escapedName = this.escapeAttribute(traj.name);
             
             html += `
-                <div class="trajectory-item field mb-1">
-                    <label class="checkbox is-size-7">
+                <div class="trajectory-card" data-trajectory-id="${traj.id}">
+                    <div class="trajectory-main-row">
                         <input type="checkbox" 
                                class="trajectory-checkbox" 
                                data-trajectory-id="${traj.id}" 
                                ${checked}>
-                        <span class="trajectory-color" style="background-color: ${color}"></span>
-                        <span class="trajectory-name">${traj.name}</span>
-                        <span class="trajectory-count">(${traj.count})</span>
-                    </label>
+                        <input type="color"
+                               class="trajectory-color-input"
+                               data-trajectory-id="${traj.id}"
+                               value="${color}">
+                        <input type="text"
+                               class="trajectory-name-field"
+                               data-trajectory-id="${traj.id}"
+                               value="${escapedName}">
+                        <div class="trajectory-actions">
+                            <button class="button is-small is-light trajectory-focus-btn"
+                                    data-trajectory-id="${traj.id}"
+                                    title="Focus"
+                                    aria-label="Focus trajectory">
+                                <span class="icon is-small"><i class="fas fa-crosshairs"></i></span>
+                            </button>
+                            <button class="button is-small is-light trajectory-edit-btn"
+                                    data-trajectory-id="${traj.id}"
+                                    title="Edit"
+                                    aria-label="Edit trajectory">
+                                <span class="icon is-small"><i class="fas fa-pen"></i></span>
+                            </button>
+                            <button class="button is-small is-light trajectory-remove-btn"
+                                    data-trajectory-id="${traj.id}"
+                                    title="Remove"
+                                    aria-label="Remove trajectory">
+                                <span class="icon is-small"><i class="fas fa-trash"></i></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="trajectory-meta">
+                        <span>${traj.count} poses</span>
+                        <span>${traj.visible ? 'visible' : 'hidden'}</span>
+                    </div>
                 </div>
             `;
         });
         
         this.ui.trajectoryList.innerHTML = html;
         
-        // Add event listeners to the new checkboxes
-        const checkboxes = this.ui.trajectoryList.querySelectorAll('.trajectory-checkbox');
-        checkboxes.forEach(checkbox => {
+        this.ui.trajectoryList.querySelectorAll('.trajectory-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
                 const trajId = parseInt(e.target.dataset.trajectoryId);
                 const visible = e.target.checked;
                 this.sceneManager.setTrajectoryVisibility(trajId, visible);
                 
-                // Update the trajectory data
                 const traj = this.currentTrajectories.find(t => t.id === trajId);
                 if (traj) {
                     traj.visible = visible;
                 }
                 
                 this.updateInfoPanel();
+                this.updateTrajectoryList();
             });
         });
+
+        this.ui.trajectoryList.querySelectorAll('.trajectory-color-input').forEach(input => {
+            input.addEventListener('input', (e) => {
+                const trajId = parseInt(e.target.dataset.trajectoryId);
+                const color = this.normalizeColor(e.target.value);
+                const traj = this.currentTrajectories.find(t => t.id === trajId);
+                if (!traj) return;
+
+                traj.color = color;
+                this.sceneManager.setTrajectoryColor(trajId, color);
+            });
+        });
+
+        this.ui.trajectoryList.querySelectorAll('.trajectory-name-field').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const trajId = parseInt(e.target.dataset.trajectoryId);
+                const name = e.target.value.trim() || 'Untitled Trajectory';
+                const traj = this.currentTrajectories.find(t => t.id === trajId);
+                if (!traj) return;
+
+                traj.name = name;
+                this.sceneManager.setTrajectoryName(trajId, name);
+                this.updateInfoPanel();
+            });
+        });
+
+        this.ui.trajectoryList.querySelectorAll('.trajectory-focus-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const trajId = parseInt(e.currentTarget.dataset.trajectoryId);
+                this.sceneManager.focusTrajectory(trajId);
+            });
+        });
+
+        this.ui.trajectoryList.querySelectorAll('.trajectory-edit-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const trajId = parseInt(e.currentTarget.dataset.trajectoryId);
+                this.startEditingTrajectory(trajId);
+            });
+        });
+
+        this.ui.trajectoryList.querySelectorAll('.trajectory-remove-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const trajId = parseInt(e.currentTarget.dataset.trajectoryId);
+                this.removeTrajectory(trajId);
+            });
+        });
+    }
+
+    startEditingTrajectory(trajectoryId) {
+        const traj = this.currentTrajectories.find(t => t.id === trajectoryId);
+        if (!traj) return;
+
+        this.editingTrajectoryId = trajectoryId;
+        this.ui.trajectoryNameInput.value = traj.name;
+        this.ui.poseInput.value = traj.source || this.formatPosesCompact(traj.poses);
+        if (traj.inputFormat) {
+            this.ui.inputFormat.value = traj.inputFormat;
+            this.ui.inputFormat.dispatchEvent(new Event('change'));
+        }
+        this.ui.addTrajBtn.innerHTML = '<span class="icon"><i class="fas fa-check"></i></span><span>Update Traj</span>';
+        this.ui.cancelEditBtn.classList.remove('is-hidden');
+        this.expandComposer();
+    }
+
+    removeTrajectory(trajectoryId) {
+        const index = this.currentTrajectories.findIndex(t => t.id === trajectoryId);
+        if (index === -1) return;
+
+        const [removed] = this.currentTrajectories.splice(index, 1);
+        if (this.editingTrajectoryId === trajectoryId) {
+            this.exitEditMode();
+        }
+        this.refreshTrajectories({ resetView: false });
+        this.showStatus(`Removed ${removed.name}`, 'success');
+    }
+
+    clearTrajectories() {
+        if (this.currentTrajectories.length === 0) return;
+
+        this.currentTrajectories = [];
+        this.exitEditMode();
+        this.refreshTrajectories({ resetView: false });
+        this.showStatus('Cleared trajectories', 'success');
+    }
+
+    clearComposerInput({ hideStatus = true } = {}) {
+        this.ui.poseInput.value = '';
+        this.ui.trajectoryNameInput.value = '';
+        if (hideStatus) {
+            this.ui.parseStatus.classList.add('is-hidden');
+        }
+    }
+
+    collapseComposer() {
+        this.ui.trajectoryComposer.classList.add('is-hidden');
+        this.ui.composerCollapsed.classList.remove('is-hidden');
+    }
+
+    expandComposer() {
+        this.ui.trajectoryComposer.classList.remove('is-hidden');
+        this.ui.composerCollapsed.classList.add('is-hidden');
+        this.ui.poseInput.focus();
+    }
+
+    exitEditMode({ clearInput = true, hideStatus = true } = {}) {
+        this.editingTrajectoryId = null;
+        this.ui.addTrajBtn.innerHTML = '<span class="icon"><i class="fas fa-plus"></i></span><span>Add Traj</span>';
+        this.ui.cancelEditBtn.classList.add('is-hidden');
+        if (clearInput) {
+            this.clearComposerInput({ hideStatus });
+        }
+    }
+
+    normalizeColor(color, fallback = '#4285f4') {
+        return /^#[0-9a-f]{6}$/i.test(color || '') ? color : fallback;
+    }
+
+    escapeAttribute(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
     }
 
     /**
@@ -372,18 +603,32 @@ class CameraPoseVisualizer {
         const circlePoses = PoseParser.generateSample(24, 'circle');
         const helixPoses = PoseParser.generateSample(30, 'helix');
         
-        // Format as two separate blocks with names (4 numbers per line)
-        const sampleText = '# Circle Path\n' +
-                          this.formatPosesCompact(circlePoses) + 
-                          '\n\n# Helix Path\n' + 
-                          this.formatPosesCompact(helixPoses);
-        
-        this.ui.poseInput.value = sampleText;
+        const circleSource = this.formatPosesCompact(circlePoses);
+        const helixSource = this.formatPosesCompact(helixPoses);
+        this.ui.poseInput.value = '';
         
         // Auto-visualize the samples
         this.currentTrajectories = [
-            { id: 0, name: 'Circle Path', poses: circlePoses, count: circlePoses.length, visible: true },
-            { id: 1, name: 'Helix Path', poses: helixPoses, count: helixPoses.length, visible: true }
+            {
+                id: this.nextTrajectoryId++,
+                name: 'Circle Path',
+                poses: circlePoses,
+                count: circlePoses.length,
+                visible: true,
+                color: this.sceneManager.getDefaultTrajectoryColor(0),
+                source: circleSource,
+                inputFormat: 'matrix'
+            },
+            {
+                id: this.nextTrajectoryId++,
+                name: 'Helix Path',
+                poses: helixPoses,
+                count: helixPoses.length,
+                visible: true,
+                color: this.sceneManager.getDefaultTrajectoryColor(1),
+                source: helixSource,
+                inputFormat: 'matrix'
+            }
         ];
         
         this.sceneManager.setTrajectories(this.currentTrajectories, 'c2w', 'opengl');
